@@ -15,16 +15,14 @@ from config import (
     AMOUNT_SPIKE_MULTIPLIER,
     HIGH_VELOCITY_SLEEP_SECONDS,
     NORMAL_SLEEP_SECONDS,
+    GEO_SWITCH_PROBABILITY
 )
 from event_schema import build_payment_event
 
 fake = Faker()
 
-# -----------------------------
 # In-memory user state
-# -----------------------------
 user_profiles = {}
-
 
 def initialize_user(user_id: str):
     """Initialize baseline behavior for a user."""
@@ -58,30 +56,36 @@ def generate_payment_event():
     transaction_id = f"txn_{uuid.uuid4().hex[:12]}"
     merchant_id = f"merchant_{random.randint(1, 20)}"
 
-    # -----------------------------
     # Amount logic
-    # -----------------------------
     if persona == "fraud" and random.random() < 0.5:
         amount = profile["base_amount"] * AMOUNT_SPIKE_MULTIPLIER
     else:
         amount = random.uniform(BASE_AMOUNT_MIN, BASE_AMOUNT_MAX)
 
-    # -----------------------------
     # Status logic
-    # -----------------------------
     if persona == "risky":
         status = random.choice(["SUCCESS", "FAILED", "FAILED"])
     else:
         status = "SUCCESS"
 
+    # Geographic switching logic
+    geo_switched = False
     country = profile["home_country"]
 
+    if persona == "fraud" and random.random() < GEO_SWITCH_PROBABILITY:
+        possible_countries = [c for c in COUNTRIES if c != profile["home_country"]]
+        country = random.choice(possible_countries)
+        geo_switched = True
+
+    
     metadata = {
         "device_type": random.choice(["mobile", "desktop"]),
         "ip_address": fake.ipv4_public(),
         "is_international": country != "US",
         "user_persona": persona,
+        "geo_switched": geo_switched,
     }
+
 
     event = build_payment_event(
         transaction_id=transaction_id,
@@ -95,9 +99,7 @@ def generate_payment_event():
         metadata=metadata,
     )
 
-    # -----------------------------
     # Velocity behavior
-    # -----------------------------
     if persona == "fraud":
         time.sleep(HIGH_VELOCITY_SLEEP_SECONDS)
     else:
