@@ -2,6 +2,8 @@ import random
 import time
 import uuid
 from faker import Faker
+from datetime import datetime, timedelta, timezone
+
 
 from config import (
     COUNTRIES,
@@ -15,7 +17,10 @@ from config import (
     AMOUNT_SPIKE_MULTIPLIER,
     HIGH_VELOCITY_SLEEP_SECONDS,
     NORMAL_SLEEP_SECONDS,
-    GEO_SWITCH_PROBABILITY
+    GEO_SWITCH_PROBABILITY,
+    LATE_EVENT_PROBABILITY,
+    MAX_EVENT_TIME_DELAY_SECONDS,
+    LATE_EVENT_EXTRA_SLEEP_SECONDS,
 )
 from event_schema import build_payment_event
 
@@ -87,6 +92,17 @@ def generate_payment_event():
     }
 
 
+    # Late / out-of-order event logic
+    is_late_event = False
+    event_time = datetime.now(timezone.utc)
+
+    if persona == "fraud" and random.random() < LATE_EVENT_PROBABILITY:
+        delay_seconds = random.randint(5, MAX_EVENT_TIME_DELAY_SECONDS)
+        event_time = event_time - timedelta(seconds=delay_seconds)
+        is_late_event = True
+
+    metadata["is_late_event"] = is_late_event
+
     event = build_payment_event(
         transaction_id=transaction_id,
         user_id=user_id,
@@ -99,10 +115,18 @@ def generate_payment_event():
         metadata=metadata,
     )
 
-    # Velocity behavior
+    # overwrite event_time AFTER creation (keeps schema backward compatible)
+    event["event_time"] = event_time.isoformat()
+
+
+    # Velocity + ingestion delay behavior
+    if is_late_event:
+        time.sleep(LATE_EVENT_EXTRA_SLEEP_SECONDS)
+
     if persona == "fraud":
         time.sleep(HIGH_VELOCITY_SLEEP_SECONDS)
     else:
         time.sleep(NORMAL_SLEEP_SECONDS)
-
+        
     return event
+
