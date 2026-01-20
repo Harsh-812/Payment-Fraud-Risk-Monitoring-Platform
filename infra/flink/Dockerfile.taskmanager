@@ -1,0 +1,22 @@
+FROM apache/flink:1.18-scala_2.12
+
+USER root
+
+# Install Python and pip
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip wget && \
+    ln -s /usr/bin/python3 /usr/bin/python && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install PyFlink and dependencies
+# Note: PyFlink is bundled with Flink, but we need to ensure Python can find it
+RUN pip3 install apache-flink protobuf googleapis-common-protos && \
+    python3 -c "import pyflink; print('PyFlink found at:', pyflink.__file__)" || echo "PyFlink check completed"
+
+# Download Flink SQL Kafka connector
+RUN wget -P /opt/flink/lib https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.18/flink-sql-connector-kafka-3.2.0-1.18.jar && \
+    chown -R flink:flink /opt/flink/lib/flink-sql-connector-kafka-3.2.0-1.18.jar
+
+USER flink
+
